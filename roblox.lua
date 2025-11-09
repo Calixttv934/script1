@@ -1,4 +1,4 @@
-Thought for 1m 51slua-- Brainrot Stealer GUI [UPD 11/9/25] - Fly, Speed Boost, TP/Fly to Base, Insta Steal
+-- Brainrot Stealer GUI [UPD 11/9/25] - Fly, Speed Boost, TP/Fly to Base, Insta Steal
 -- Features: Orbit-style Fly (manual control), Speed/WalkSpeed Boost, Good UI (OrionLib)
 -- TP/Fly to Base (Own/Random/Richest), Insta Raid Richest, Auto Steal (little boost)
 -- Updated for Brainrot Dealer Update - Works on all executors (Syn, Krnl, etc.)

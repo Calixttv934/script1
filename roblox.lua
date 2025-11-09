@@ -1,32 +1,19 @@
--- Brainrot Stealer GUI [UPD 11/9/25] - Fly, Speed Boost, TP/Fly to Base, Insta Steal
--- Features: Orbit-style Fly (manual control), Speed/WalkSpeed Boost, Good UI (OrionLib)
--- TP/Fly to Base (Own/Random/Richest), Insta Raid Richest, Auto Steal (little boost)
--- Updated for Brainrot Dealer Update - Works on all executors (Syn, Krnl, etc.)
--- Load in executor and enjoy!
+-- Brainrot Stealer Simple GUI [UPD 11/9/25] - Fly, Speed Boost, TP/Fly to Base, Insta Steal
+-- Features: Orbit-style Fly, Noclip, TP to Bases, Auto Steal (little boost), Insta Raid
+-- No external libraries - Fully self-contained with basic Roblox GUI
+-- Updated for Brainrot Dealer Update - Works on Solara and other executors
+-- Upload to GitHub as roblox.lua and load with: loadstring(game:HttpGet("https://raw.githubusercontent.com/Calixttv934/script1/main/roblox.lua"))()
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
-local mouse = player:GetMouse()
 
 -- Wait for essentials
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local StealRemote = Remotes:WaitForChild("Steal")
 local Bases = workspace:WaitForChild("Bases")
-
--- OrionLib for nice UI
-local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
-
-local Window = OrionLib:MakeWindow({
-    Name = "🧠 Brainrot Stealer [UPD 11/9/25]",
-    HidePremium = false,
-    SaveConfig = true,
-    ConfigFolder = "BrainrotStealer",
-    IntroEnabled = false
-})
 
 -- Variables
 local flying = false
@@ -41,7 +28,143 @@ local richBase = nil
 local autoStealConn = nil
 local autoStealEnabled = false
 
--- Functions
+-- Simple GUI Setup
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BrainrotStealerGUI"
+ScreenGui.Parent = player:WaitForChild("PlayerGui")
+
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, 200, 0, 300)
+Frame.Position = UDim2.new(0.5, -100, 0.5, -150)
+Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Frame.BorderSizePixel = 0
+Frame.Parent = ScreenGui
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+Title.Text = "Brainrot Stealer"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 18
+Title.Parent = Frame
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0, 5)
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Parent = Frame
+
+-- Helper to create buttons
+local function createButton(name, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 30)
+    btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    btn.Text = name
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 14
+    btn.Parent = Frame
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+-- Fly Speed TextBox
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(1, 0, 0, 30)
+speedLabel.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+speedLabel.Text = "Fly Speed:"
+speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedLabel.TextSize = 14
+speedLabel.Parent = Frame
+
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(0.5, 0, 0, 30)
+speedBox.Position = UDim2.new(0.5, 0, 0, 0) -- Relative to speedLabel, but since list, adjust
+speedBox.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+speedBox.Text = "50"
+speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedBox.TextSize = 14
+speedBox.Parent = speedLabel  -- Nest for simplicity
+
+-- Fly Toggle
+local flyBtn = createButton("Fly (WASD QE): Off", function()
+    flying = not flying
+    flySpeed = tonumber(speedBox.Text) or 50
+    if flying then
+        startFly()
+        flyBtn.Text = "Fly (WASD QE): On"
+        flyBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+    else
+        stopFly()
+        flyBtn.Text = "Fly (WASD QE): Off"
+        flyBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    end
+end)
+
+-- Noclip Toggle
+local noclipBtn = createButton("Noclip: Off", function()
+    local enabled = noclipConn == nil
+    toggleNoclip(enabled)
+    if enabled then
+        noclipBtn.Text = "Noclip: On"
+        noclipBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+    else
+        noclipBtn.Text = "Noclip: Off"
+        noclipBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    end
+end)
+
+-- TP Buttons
+createButton("TP to Your Base", function() tpToBase(player.Name) end)
+createButton("TP to Random Base", function()
+    local pls = {}
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= player then table.insert(pls, plr.Name) end
+    end
+    if #pls > 0 then tpToBase(pls[math.random(1, #pls)]) end
+end)
+createButton("TP to Richest Base", function()
+    local rich = getRichest()
+    if rich then tpToBase(rich) end
+end)
+
+-- Steal Toggles/Buttons
+local autoStealBtn = createButton("Auto Steal Nearby: Off", function()
+    autoStealEnabled = not autoStealEnabled
+    toggleAutoSteal(autoStealEnabled)
+    if autoStealEnabled then
+        autoStealBtn.Text = "Auto Steal Nearby: On"
+        autoStealBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+    else
+        autoStealBtn.Text = "Auto Steal Nearby: Off"
+        autoStealBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    end
+end)
+
+createButton("Insta Steal Current Area", function()
+    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local pos = hrp.Position
+        for _, base in pairs(Bases:GetChildren()) do
+            if base.PrimaryPart and (base.PrimaryPart.Position - pos).Magnitude < 200 then
+                instaSteal(base)
+                break
+            end
+        end
+    end
+end)
+
+createButton("Fly to Richest & Insta Raid", function()
+    local rich = getRichest()
+    if rich then
+        local base = Bases:FindFirstChild(rich)
+        if base and base.PrimaryPart then
+            targetPos = base.PrimaryPart.Position + Vector3.new(0, 20, 0)
+            richBase = base
+            print("Flying to richest base... Enable Fly!")
+        end
+    end
+end)
+
+-- Functions (same as before)
 local function getRichest()
     local richest = nil
     local maxCash = 0
@@ -83,35 +206,30 @@ local function instaSteal(base)
     local steals = getStealable(base)
     local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
+    local count = 0
     for _, obj in pairs(steals) do
         if obj.PrimaryPart then
             hrp.CFrame = obj.PrimaryPart.CFrame * CFrame.new(0, 0, -5)
             task.wait(0.05)
             StealRemote:FireServer(obj)
+            count = count + 1
         end
     end
-    OrionLib:MakeNotification({
-        Name = "Steal Boost",
-        Content = "Insta stole " .. #steals .. " brainrots!",
-        Image = "rbxassetid://4483345998",
-        Time = 3
-    })
+    print("Insta stole " .. count .. " brainrots!")
 end
 
 local function startFly()
     local char = player.Character
-    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+    bodyVelocity = Instance.new("BodyVelocity", hrp)
+    bodyVelocity.MaxForce = Vector3.new(1e9, 1e9, 1e9)
     bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-    bodyVelocity.Parent = hrp
 
-    bodyGyro = Instance.new("BodyAngularVelocity")
-    bodyGyro.MaxTorque = Vector3.new(4000, 4000, 4000)
-    bodyGyro.AngularVelocity = Vector3.new(0, 0, 0)
-    bodyGyro.Parent = hrp
+    bodyGyro = Instance.new("BodyGyro", hrp)
+    bodyGyro.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+    bodyGyro.P = 20000
 
     flyConn = RunService.Heartbeat:Connect(function()
         local cam = workspace.CurrentCamera
@@ -119,19 +237,18 @@ local function startFly()
 
         if keys.w then moveVector = moveVector + cam.CFrame.LookVector end
         if keys.s then moveVector = moveVector - cam.CFrame.LookVector end
-        if keys.a then moveVector = moveVector - cam.RightVector end
-        if keys.d then moveVector = moveVector + cam.RightVector end
+        if keys.a then moveVector = moveVector - cam.CFrame.LookVector:Cross(Vector3.new(0,1,0)) end
+        if keys.d then moveVector = moveVector + cam.CFrame.LookVector:Cross(Vector3.new(0,1,0)) end
         if keys.q then moveVector = moveVector + Vector3.new(0, 1, 0) end
         if keys.e then moveVector = moveVector + Vector3.new(0, -1, 0) end
 
+        if moveVector.Magnitude > 0 then moveVector = moveVector.Unit end
         bodyVelocity.Velocity = moveVector * flySpeed
 
-        -- Auto fly to target
         if targetPos then
-            local dir = (targetPos - hrp.Position)
-            local dist = dir.Magnitude
-            local autoVel = dir.Unit * flySpeed * 0.7
-            bodyVelocity.Velocity = bodyVelocity.Velocity:Lerp(autoVel, 0.3)
+            local dir = (targetPos - hrp.Position).Unit
+            local dist = (targetPos - hrp.Position).Magnitude
+            bodyVelocity.Velocity = dir * flySpeed
             if dist < 50 then
                 instaSteal(richBase)
                 targetPos = nil
@@ -155,9 +272,7 @@ local function toggleNoclip(enabled)
     if enabled then
         noclipConn = RunService.Stepped:Connect(function()
             for _, part in pairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
+                if part:IsA("BasePart") then part.CanCollide = false end
             end
         end)
     else
@@ -176,7 +291,8 @@ local function toggleAutoSteal(enabled)
                 if base.Name ~= player.Name then
                     for _, desc in pairs(base:GetDescendants()) do
                         if desc:IsA("Model") and string.find(string.lower(desc.Name), "brainrot") and desc:FindFirstChild("Owner") and desc.Owner.Value ~= player then
-                            local dist = (hrp.Position - (desc.PrimaryPart and desc.PrimaryPart.Position or Vector3.new())).Magnitude
+                            local pos = desc.PrimaryPart and desc.PrimaryPart.Position or desc.Position
+                            local dist = (hrp.Position - pos).Magnitude
                             if dist < minDist then
                                 minDist = dist
                                 closest = desc
@@ -185,8 +301,9 @@ local function toggleAutoSteal(enabled)
                     end
                 end
             end
-            if closest and minDist < 100 then -- Little boost: steal nearby only
-                hrp.CFrame = closest.PrimaryPart.CFrame * CFrame.new(0, 0, -5)
+            if closest and minDist < 100 then
+                local pos = closest.PrimaryPart and closest.PrimaryPart.Position or closest.Position
+                hrp.CFrame = CFrame.new(pos) * CFrame.new(0, 0, -5)
                 task.wait(0.1)
                 StealRemote:FireServer(closest)
             end
@@ -196,165 +313,38 @@ local function toggleAutoSteal(enabled)
     end
 end
 
--- Input Handling
+-- Input for Fly
 UserInputService.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Keyboard then
-        if input.KeyCode == Enum.KeyCode.W then keys.w = true
-        elseif input.KeyCode == Enum.KeyCode.A then keys.a = true
-        elseif input.KeyCode == Enum.KeyCode.S then keys.s = true
-        elseif input.KeyCode == Enum.KeyCode.D then keys.d = true
-        elseif input.KeyCode == Enum.KeyCode.Q then keys.q = true
-        elseif input.KeyCode == Enum.KeyCode.E then keys.e = true end
+        local code = input.KeyCode
+        if code == Enum.KeyCode.W then keys.w = true
+        elseif code == Enum.KeyCode.A then keys.a = true
+        elseif code == Enum.KeyCode.S then keys.s = true
+        elseif code == Enum.KeyCode.D then keys.d = true
+        elseif code == Enum.KeyCode.Q then keys.q = true
+        elseif code == Enum.KeyCode.E then keys.e = true end
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Keyboard then
-        if input.KeyCode == Enum.KeyCode.W then keys.w = false
-        elseif input.KeyCode == Enum.KeyCode.A then keys.a = false
-        elseif input.KeyCode == Enum.KeyCode.S then keys.s = false
-        elseif input.KeyCode == Enum.KeyCode.D then keys.d = false
-        elseif input.KeyCode == Enum.KeyCode.Q then keys.q = false
-        elseif input.KeyCode == Enum.KeyCode.E then keys.e = false end
+        local code = input.KeyCode
+        if code == Enum.KeyCode.W then keys.w = false
+        elseif code == Enum.KeyCode.A then keys.a = false
+        elseif code == Enum.KeyCode.S then keys.s = false
+        elseif code == Enum.KeyCode.D then keys.d = false
+        elseif code == Enum.KeyCode.Q then keys.q = false
+        elseif code == Enum.KeyCode.E then keys.e = false end
     end
 end)
 
--- UI Tabs
-local MoveTab = Window:MakeTab({
-    Name = "✈️ Movement",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-MoveTab:AddToggle({
-    Name = "Fly (WASD + QE)",
-    Default = false,
-    Callback = function(v)
-        flying = v
-        if v then
-            startFly()
-        else
-            stopFly()
-        end
+-- Cleanup
+Players.PlayerRemoving:Connect(function(plr)
+    if plr == player then
+        stopFly()
+        toggleNoclip(false)
+        toggleAutoSteal(false)
     end
-})
-
-MoveTab:AddSlider({
-    Name = "Fly Speed",
-    Min = 16,
-    Max = 500,
-    Default = 50,
-    Color = Color3.fromRGB(0, 125, 255),
-    Increment = 1,
-    Callback = function(v)
-        flySpeed = v
-    end
-})
-
-MoveTab:AddToggle({
-    Name = "Noclip",
-    Default = false,
-    Callback = function(v)
-        toggleNoclip(v)
-    end
-})
-
-local TeleTab = Window:MakeTab({
-    Name = "🏠 Teleport",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-TeleTab:AddButton({
-    Name = "TP to Your Base",
-    Callback = function()
-        tpToBase(player.Name)
-    end
-})
-
-TeleTab:AddButton({
-    Name = "TP to Random Base",
-    Callback = function()
-        local pls = {}
-        for _, plr in pairs(Players:GetPlayers()) do
-            if plr ~= player then
-                table.insert(pls, plr.Name)
-            end
-        end
-        if #pls > 0 then
-            tpToBase(pls[math.random(1, #pls)])
-        end
-    end
-})
-
-TeleTab:AddButton({
-    Name = "TP to Richest Base",
-    Callback = function()
-        local rich = getRichest()
-        if rich then
-            tpToBase(rich)
-        end
-    end
-})
-
-local StealTab = Window:MakeTab({
-    Name = "💀 Steal",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-StealTab:AddToggle({
-    Name = "Auto Steal Nearby (Little Boost)",
-    Default = false,
-    Callback = function(v)
-        autoStealEnabled = v
-        toggleAutoSteal(v)
-    end
-})
-
-StealTab:AddButton({
-    Name = "Insta Steal Current Area",
-    Callback = function()
-        -- Steal all nearby (simulate current base)
-        local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            local pos = hrp.Position
-            for _, base in pairs(Bases:GetChildren()) do
-                if (base.PrimaryPart.Position - pos).Magnitude < 200 then
-                    instaSteal(base)
-                    break
-                end
-            end
-        end
-    end
-})
-
-StealTab:AddButton({
-    Name = "Fly to Richest Base & Insta Raid",
-    Callback = function()
-        local rich = getRichest()
-        if rich then
-            local base = Bases:FindFirstChild(rich)
-            if base and base.PrimaryPart then
-                targetPos = base.PrimaryPart.Position + Vector3.new(0, 20, 0)
-                richBase = base
-                OrionLib:MakeNotification({
-                    Name = "Raid Mode",
-                    Content = "Flying to richest base... Hold fly!",
-                    Time = 3
-                })
-            end
-        end
-    end
-})
-
-OrionLib:Init()
-
--- Cleanup on leave
-Players.PlayerRemoving:Connect(function()
-    stopFly()
-    toggleNoclip(false)
-    toggleAutoSteal(false)
 end)
 
-print("🧠 Brainrot Stealer loaded! Use Fly + Raid for max steals. Enjoy the update! 🚀")
+print("🧠 Simple Brainrot Stealer loaded! GUI should appear. Use buttons for features.")
